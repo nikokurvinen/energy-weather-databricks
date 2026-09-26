@@ -7,26 +7,47 @@
         "WITH national_weather AS (\n",
         "  SELECT time_utc, AVG(temperature_c) AS temp_avg_c\n",
         "  FROM workspace.energy_weather.fact_weather_hour\n",
+        "  WHERE time_utc BETWEEN :date_range.min AND :date_range.max\n",
         "  GROUP BY time_utc\n",
         ")\n",
         "SELECT\n",
         "  CASE\n",
-        "    WHEN w.temp_avg_c <  0 THEN 'Cold (below 0)'\n",
+        "    WHEN w.temp_avg_c < 0 THEN 'Cold (below 0)'\n",
         "    WHEN w.temp_avg_c < 15 THEN 'Mild (0 to 15)'\n",
-        "    ELSE                        'Warm (above 15)'\n",
+        "    ELSE 'Warm (above 15)'\n",
         "  END AS temperature,\n",
         "  CASE\n",
         "    WHEN p.capacity_factor < 0.15 THEN 'Calm'\n",
         "    WHEN p.capacity_factor < 0.45 THEN 'Moderate'\n",
-        "    ELSE                               'Windy'\n",
+        "    ELSE 'Windy'\n",
         "  END AS wind_conditions,\n",
-        "  ROUND(AVG(p.price_eur_mwh), 2)      AS avg_price_eur_mwh,\n",
-        "  ROUND(AVG(p.price_eur_mwh) / 10, 2) AS avg_price_snt_kwh,\n",
-        "  ROUND(AVG(p.consumption_mw))        AS avg_consumption_mw,\n",
-        "  COUNT(*)                            AS hours\n",
+        "  ROUND(AVG(p.price_eur_mwh), 2)        AS avg_price_eur_mwh,\n",
+        "  ROUND(AVG(p.price_eur_mwh) / 10, 2)   AS avg_price_snt_kwh,\n",
+        "  ROUND(AVG(p.consumption_mw))          AS avg_consumption_mw,\n",
+        "  COUNT(*)                              AS hours\n",
         "FROM workspace.energy_weather.fact_power_hour p\n",
         "JOIN national_weather w ON p.time_utc = w.time_utc\n",
+        "WHERE p.time_utc BETWEEN :date_range.min AND :date_range.max\n",
         "GROUP BY 1, 2"
+      ],
+      "parameters": [
+        {
+          "displayName": "date_range",
+          "keyword": "date_range",
+          "dataType": "DATE",
+          "complexType": "RANGE",
+          "defaultSelection": {
+            "range": {
+              "dataType": "DATE",
+              "min": {
+                "value": "2026-03-04T00:00:00.000"
+              },
+              "max": {
+                "value": "2026-09-01T23:59:59.999"
+              }
+            }
+          }
+        }
       ]
     },
     {
@@ -36,6 +57,7 @@
         "WITH national_weather AS (\n",
         "  SELECT time_utc, AVG(temperature_c) AS temp_avg_c\n",
         "  FROM workspace.energy_weather.fact_weather_hour\n",
+        "  WHERE time_utc BETWEEN :date_range.min AND :date_range.max\n",
         "  GROUP BY time_utc\n",
         ")\n",
         "SELECT\n",
@@ -46,12 +68,26 @@
         "    WHEN w.temp_avg_c <  10 THEN '0 to +10'\n",
         "    WHEN w.temp_avg_c <  20 THEN '+10 to +20'\n",
         "    ELSE                         'Above +20'\n",
-        "  END                          AS temperature_band,\n",
+        "  END AS temperature_band,\n",
         "  ROUND(AVG(p.consumption_mw)) AS avg_consumption_mw,\n",
         "  COUNT(*)                     AS hours\n",
         "FROM workspace.energy_weather.fact_power_hour p\n",
         "JOIN national_weather w ON p.time_utc = w.time_utc\n",
+        "WHERE p.time_utc BETWEEN :date_range.min AND :date_range.max\n",
         "GROUP BY 1"
+      ],
+      "parameters": [
+        {
+          "displayName": "date_range",
+          "keyword": "date_range",
+          "dataType": "DATE",
+          "complexType": "RANGE",
+          "defaultSelection": {
+            "operator": {
+              "operator": "AND"
+            }
+          }
+        }
       ]
     },
     {
@@ -60,11 +96,38 @@
       "queryLines": [
         "SELECT\n",
         "  CONCAT(a.city, ' (', a.region, ')')                AS location,\n",
-        "  ROUND(CORR(w.wind_speed_ms, p.capacity_factor), 3) AS correlation\n",
+        "  ROUND(CORR(w.wind_speed_ms, p.capacity_factor), 3) AS correlation,\n",
+        "  CASE a.city\n",
+        "    WHEN 'Helsinki' THEN 60.1699\n",
+        "    WHEN 'Kuopio'   THEN 62.8980\n",
+        "    WHEN 'Oulu'     THEN 65.0121\n",
+        "    WHEN 'Vaasa'    THEN 63.0951\n",
+        "  END                                                 AS latitude,\n",
+        "  CASE a.city\n",
+        "    WHEN 'Helsinki' THEN 24.9384\n",
+        "    WHEN 'Kuopio'   THEN 27.6782\n",
+        "    WHEN 'Oulu'     THEN 25.4651\n",
+        "    WHEN 'Vaasa'    THEN 21.6165\n",
+        "  END                                                 AS longitude\n",
         "FROM workspace.energy_weather.fact_weather_hour w\n",
         "JOIN workspace.energy_weather.fact_power_hour p ON w.time_utc = p.time_utc\n",
         "JOIN workspace.energy_weather.dim_area a ON w.area_id = a.area_id\n",
-        "GROUP BY 1"
+        "WHERE (:date_range.min IS NULL OR w.time_utc >= :date_range.min)\n",
+        "  AND (:date_range.max IS NULL OR w.time_utc <= :date_range.max)\n",
+        "GROUP BY a.city, a.region"
+      ],
+      "parameters": [
+        {
+          "displayName": "date_range",
+          "keyword": "date_range",
+          "dataType": "DATE",
+          "complexType": "RANGE",
+          "defaultSelection": {
+            "operator": {
+              "operator": "AND"
+            }
+          }
+        }
       ]
     },
     {
@@ -89,11 +152,25 @@
       "displayName": "headline_numbers",
       "queryLines": [
         "SELECT\n",
-        "  COUNT(*)                          AS total_hours,\n",
-        "  ROUND(MAX(price_eur_mwh) / 10, 1) AS max_price_snt_kwh,\n",
-        "  ROUND(AVG(capacity_factor), 3)    AS avg_capacity_factor,\n",
-        "  ROUND(AVG(consumption_mw))        AS avg_consumption_mw\n",
-        "FROM workspace.energy_weather.fact_power_hour"
+        "  COUNT(*)                              AS total_hours,\n",
+        "  ROUND(MAX(price_eur_mwh) / 10, 1)     AS max_price_snt_kwh,\n",
+        "  ROUND(AVG(capacity_factor), 3)        AS avg_capacity_factor,\n",
+        "  ROUND(AVG(consumption_mw))            AS avg_consumption_mw\n",
+        "FROM workspace.energy_weather.fact_power_hour\n",
+        "WHERE time_utc BETWEEN :date_range.min AND :date_range.max"
+      ],
+      "parameters": [
+        {
+          "displayName": "date_range",
+          "keyword": "date_range",
+          "dataType": "DATE",
+          "complexType": "RANGE",
+          "defaultSelection": {
+            "operator": {
+              "operator": "AND"
+            }
+          }
+        }
       ]
     }
   ],
@@ -133,11 +210,11 @@
                 "showTitle": true,
                 "showDescription": true,
                 "title": {
-                  "value": "A cold calm hour costs 16 times a warm windy one",
+                  "value": "Price by wind conditions and temperature",
                   "fields": []
                 },
                 "description": {
-                  "value": "<span style=\"font-size: 10px;color: #919191;\">Wind conditions are the national capacity factor: calm is under 15 percent, windy is 45 percent or more, against an annual mean near 30 percent. The warm windy bar rests on 74 hours; every other bar has at least 390.</span>",
+                  "value": "<span style=\"font-size: 10px;font-family: JetBrains Mono;color: #ADADAD;\">Average price (snt/kWh) per hour, grouped by wind conditions and temperature band. Wind conditions are based on national capacity factor: calm is under 15 percent, windy is 45 percent or more, against an annual mean near 30 percent.</span>",
                   "fields": []
                 }
               },
@@ -193,9 +270,9 @@
           },
           "position": {
             "x": 0,
-            "y": 3,
+            "y": 6,
             "width": 6,
-            "height": 6
+            "height": 12
           }
         },
         {
@@ -225,11 +302,11 @@
                 "showTitle": true,
                 "showDescription": true,
                 "title": {
-                  "value": "Consumption rises 70 percent in the cold",
+                  "value": "Consumption by temperature band",
                   "fields": []
                 },
                 "description": {
-                  "value": "<span style=\"font-size: 10px;color: #919191;\">The small rise above +20 C is a time-of-day effect, not cooling demand:those hours are almost all summer afternoons. Holding the hour constantat 13:00 removes it.</span>",
+                  "value": "<span style=\"font-size: 11px;font-family: JetBrains Mono;color: #ADADAD;\">Average consumption (MW) per hour, grouped by 10-degree temperature bands. The hour is not held constant, so a time-of-day effect can appear in summer bands.</span>",
                   "fields": []
                 }
               },
@@ -276,7 +353,7 @@
           },
           "position": {
             "x": 6,
-            "y": 3,
+            "y": 6,
             "width": 6,
             "height": 6
           }
@@ -308,11 +385,11 @@
                 "showTitle": true,
                 "showDescription": true,
                 "title": {
-                  "value": "West coast wind explains national production best",
+                  "value": "Wind-to-production correlation by location",
                   "fields": []
                 },
                 "description": {
-                  "value": "<span style=\"font-size: 10px;color: #919191;\">Correlation between local wind speed and the national capacity factor,8,624 hours. All four are positive because weather systems span the wholecountry; the ranking is the finding, not the level.</span>",
+                  "value": "<span style=\"font-size: 11px;font-family: JetBrains Mono;color: #ADADAD;\">Correlation between local wind speed and national capacity factor at each observation point. All four measure the same national grid, so differences reflect the finding, not the location's own output.</span>",
                   "fields": []
                 }
               },
@@ -347,8 +424,8 @@
             }
           },
           "position": {
-            "x": 0,
-            "y": 9,
+            "x": 6,
+            "y": 12,
             "width": 6,
             "height": 6
           }
@@ -380,11 +457,11 @@
                 "showDescription": true,
                 "showTitle": true,
                 "title": {
-                  "value": "Price peaks in midwinter, nine times the July low",
+                  "value": "Average price by month",
                   "fields": []
                 },
                 "description": {
-                  "value": "<span style=\"font-size: 10px;color: #919191;\">February and March had similar demand (13,032 and 11,056 MW) but opposite</span><span style=\"font-size: 10px;color: #919191;\">wind (capacity factor 0.19 and 0.42). The price differed fivefold. July is</span><span style=\"font-size: 10px;color: #919191;\">cheapest despite the year's lowest wind, because demand is lowest too.</span>",
+                  "value": "<span style=\"font-family: JetBrains Mono;font-size: 11px;color: #ADADAD;\">Monthly average price (snt/kWh) over the selected date range.</span>",
                   "fields": []
                 }
               },
@@ -417,7 +494,7 @@
           },
           "position": {
             "x": 6,
-            "y": 9,
+            "y": 0,
             "width": 6,
             "height": 6
           }
@@ -470,9 +547,9 @@
           },
           "position": {
             "x": 0,
-            "y": 0,
-            "width": 3,
-            "height": 3
+            "y": 2,
+            "width": 1,
+            "height": 4
           }
         },
         {
@@ -514,10 +591,10 @@
             }
           },
           "position": {
-            "x": 3,
-            "y": 0,
-            "width": 3,
-            "height": 3
+            "x": 1,
+            "y": 2,
+            "width": 1,
+            "height": 4
           }
         },
         {
@@ -559,10 +636,10 @@
             }
           },
           "position": {
-            "x": 6,
-            "y": 0,
-            "width": 3,
-            "height": 3
+            "x": 2,
+            "y": 2,
+            "width": 1,
+            "height": 4
           }
         },
         {
@@ -612,10 +689,148 @@
             }
           },
           "position": {
-            "x": 9,
+            "x": 3,
+            "y": 2,
+            "width": 1,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "date-range",
+            "queries": [
+              {
+                "name": "dashboards/01f1b9dc3b821f689341db9b3df43df1/datasets/01f1b9dc3b83110297ca27811721179f_month",
+                "query": {
+                  "datasetName": "ffe1ea28",
+                  "fields": [
+                    {
+                      "name": "month",
+                      "expression": "`month`"
+                    },
+                    {
+                      "name": "month_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/01f1b9dc3b821f689341db9b3df43df1/datasets/01f1b9dc3b8310fa9a60db7ae90e4035_date_range",
+                "query": {
+                  "datasetName": "01f0887c",
+                  "parameters": [
+                    {
+                      "name": "date_range",
+                      "keyword": "date_range"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/01f1b9dc3b821f689341db9b3df43df1/datasets/01f1b9dc3b831103ae9b9c092e3d580a_date_range",
+                "query": {
+                  "datasetName": "9e393a3f",
+                  "parameters": [
+                    {
+                      "name": "date_range",
+                      "keyword": "date_range"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/01f1b9dc3b821f689341db9b3df43df1/datasets/01f1b9dc3b831101a60d4ff8ed5649bf_date_range",
+                "query": {
+                  "datasetName": "fea743c4",
+                  "parameters": [
+                    {
+                      "name": "date_range",
+                      "keyword": "date_range"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/01f1b9dc3b821f689341db9b3df43df1/datasets/01f1b9dc3b83110089c5157b028f80ab_date_range",
+                "query": {
+                  "datasetName": "11fe7b0b",
+                  "parameters": [
+                    {
+                      "name": "date_range",
+                      "keyword": "date_range"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "showDescription": true,
+                "title": {
+                  "value": "Date range",
+                  "fields": []
+                },
+                "description": {
+                  "value": "<span style=\"font-family: JetBrains Mono;font-size: 11px;color: #ADADAD;\">Filters all charts and metrics to the selected period.</span>",
+                  "fields": []
+                }
+              },
+              "widgetType": "filter-date-range-picker",
+              "encodings": {
+                "fields": [
+                  {
+                    "parameterName": "date_range",
+                    "queryName": "parameter_dashboards/01f1b9dc3b821f689341db9b3df43df1/datasets/01f1b9dc3b8310fa9a60db7ae90e4035_date_range"
+                  },
+                  {
+                    "fieldName": "month",
+                    "queryName": "dashboards/01f1b9dc3b821f689341db9b3df43df1/datasets/01f1b9dc3b83110297ca27811721179f_month"
+                  },
+                  {
+                    "parameterName": "date_range",
+                    "queryName": "parameter_dashboards/01f1b9dc3b821f689341db9b3df43df1/datasets/01f1b9dc3b831103ae9b9c092e3d580a_date_range"
+                  },
+                  {
+                    "parameterName": "date_range",
+                    "queryName": "parameter_dashboards/01f1b9dc3b821f689341db9b3df43df1/datasets/01f1b9dc3b831101a60d4ff8ed5649bf_date_range"
+                  },
+                  {
+                    "parameterName": "date_range",
+                    "queryName": "parameter_dashboards/01f1b9dc3b821f689341db9b3df43df1/datasets/01f1b9dc3b83110089c5157b028f80ab_date_range"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 2,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "f4fe6d19",
+            "multilineTextboxSpec": {
+              "lines": [
+                "<span style=\"text-align:left;display:block;\"><span style=\"font-size:24px\">Data: Fingrid (production, consumption, price) and Open-Meteo (weather observations),combined at hourly resolution. Use the date range filter above to explore any period.Note: charts showing a relationship between weather and price/production showcorrelation, not causation. Other factors (demand, imports, maintenance) alsodrive these numbers.</span></span>"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
             "y": 0,
-            "width": 3,
-            "height": 3
+            "width": 6,
+            "height": 2
           }
         }
       ],
@@ -646,18 +861,14 @@
         "dark": "#8ACAFF"
       },
       "visualizationColors": [
-        "#077A9D",
-        "#FFAB00",
-        "#00A972",
-        "#FF3621",
-        "#8BCAE7",
-        "#AB4057",
-        "#99DDB4",
-        "#FCA4A1",
-        "#919191",
-        "#BF7080"
+        "#15AFDD",
+        "#2375A8",
+        "#52A870",
+        "#C85070",
+        "#C89930"
       ],
-      "widgetHeaderAlignment": "LEFT"
+      "widgetHeaderAlignment": "LEFT",
+      "fontFamily": "Space Grotesk"
     },
     "applyModeEnabled": false
   }
