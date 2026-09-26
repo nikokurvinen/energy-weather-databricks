@@ -1,4 +1,4 @@
-# energy-weather-lakehouse
+# energy-weather-databricks
 
 In Finland, an hour that is cold and calm costs sixteen times as much electricity as an hour that
 is warm and windy. This measures that, hour by hour across a year, from three public APIs.
