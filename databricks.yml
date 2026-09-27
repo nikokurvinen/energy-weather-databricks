@@ -11,12 +11,12 @@
 # The workspace host is deliberately absent. The CLI reads it from ~/.databrickscfg,
 # so the address of a private workspace stays out of a public repository.
 bundle:
-  name: energy-weather-lakehouse
+  name: energy-weather-databricks
 
 variables:
   notebook_root:
     description: Workspace path of the Git folder holding the notebooks.
-    default: /Workspace/Users/dev@nikokurvinen.fi/energy-weather-lakehouse/notebooks
+    default: /Workspace/Users/dev@nikokurvinen.fi/energy-weather-databricks/notebooks
   alert_email:
     description: Address that receives a message when a run fails.
     default: dev@nikokurvinen.fi
